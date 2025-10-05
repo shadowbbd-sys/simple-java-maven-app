@@ -41,17 +41,17 @@ pipeline {
             }
         }
 
-        stage('SonarQube Analysis') {
-            steps {
-                sh '''
-                    mvn sonar:sonar \
-                    -Dsonar.projectKey=simple-java-maven-app \
-                    -Dsonar.projectName='Simple Java Maven App' \
-                    -Dsonar.host.url=${SONARQUBE_URL} \
-                    -Dsonar.token=${SONARQUBE_TOKEN}
-                '''
-            }
-        }
+        // stage('SonarQube Analysis') {
+        //     steps {
+        //         sh '''
+        //             mvn sonar:sonar \
+        //             -Dsonar.projectKey=simple-java-maven-app \
+        //             -Dsonar.projectName='Simple Java Maven App' \
+        //             -Dsonar.host.url=${SONARQUBE_URL} \
+        //             -Dsonar.token=${SONARQUBE_TOKEN}
+        //         '''
+        //     }
+        // }
         
    stage('Upload to Nexus') {
             steps {
