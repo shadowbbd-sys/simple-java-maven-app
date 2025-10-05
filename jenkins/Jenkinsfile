@@ -29,11 +29,19 @@ pipeline {
             }
         }
 
-         stage('Publish to Nexus') {
+        stage('Publish to Nexus') {
             steps {
-                echo 'Uploading artifacts to Nexus repository...'
-                sh 'mvn deploy -DaltDeploymentRepository=nexus::default::http://52.90.103.249:8081/repository/maven-releases/'
-            }
+                echo '📦 Uploading artifacts to Nexus repository...'
+        withCredentials([usernamePassword(credentialsId: 'nexus-credentials', usernameVariable: 'NEXUS_USER', passwordVariable: 'NEXUS_PASS')]) {
+            sh '''
+                mvn deploy \
+                  -DaltDeploymentRepository=nexus::default::http://52.90.103.249:8081/repository/maven-releases/ \
+                  -Dnexus.username=$NEXUS_USER \
+                  -Dnexus.password=$NEXUS_PASS
+            '''
         }
+    }
+}
+
     }
     }
