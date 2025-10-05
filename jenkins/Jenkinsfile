@@ -45,38 +45,6 @@ pipeline {
             }
         }
         
-        stage('OWASP Dependency Check') {
-            steps {
-                script {
-                    // Run OWASP Dependency Check using Docker
-                    sh """
-                        docker run --rm \
-                        -v \$(pwd):/src \
-                        -v \$(pwd)/owasp-reports:/report \
-                        ${OWASP_DC_DOCKER_IMAGE} \
-                        --scan /src \
-                        --format HTML \
-                        --format XML \
-                        --out /report \
-                        --project simple-java-maven-app
-                    """
-                }
-            }
-            post {
-                always {
-                    // Publish OWASP report
-                    publishHTML(target: [
-                        allowMissing: false,
-                        alwaysLinkToLastBuild: true,
-                        keepAll: true,
-                        reportDir: 'owasp-reports',
-                        reportFiles: 'dependency-check-report.html',
-                        reportName: 'OWASP Dependency Check Report'
-                    ])
-                }
-            }
-        }
-        
         stage('Upload to Nexus') {
             steps {
                 script {
