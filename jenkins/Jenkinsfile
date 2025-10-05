@@ -5,15 +5,9 @@ pipeline {
         JAVA_HOME = '/usr/lib/jvm/java-21-amazon-corretto'
         PATH = "/opt/maven/bin:$JAVA_HOME/bin:$PATH"
         
-        // Nexus Configuration (Update these values)
-        NEXUS_VERSION = "nexus3"
-        NEXUS_PROTOCOL = "http"
-        NEXUS_URL = "http://52.90.103.249:8081"  // Your Nexus Docker container URL
-        NEXUS_REPOSITORY = "maven-releases"
-        NEXUS_CREDENTIAL_ID = "nexus-credentials"  // Jenkins credential ID
-        
-        // OWASP Docker Configuration
-        OWASP_DC_DOCKER_IMAGE = "owasp/dependency-check:latest"
+        // Nexus Configuration - Update with your EC2 IP
+        NEXUS_URL = "localhost:8081"
+        NEXUS_CREDENTIAL_ID = "nexus-credentials"
     }
     
     options {
@@ -45,40 +39,48 @@ pipeline {
             }
         }
         
+        stage('OWASP Dependency Check') {
+            steps {
+                sh '''
+                    docker run --rm \
+                    -v $(pwd):/src \
+                    -v $(pwd)/owasp-report:/report \
+                    owasp/dependency-check:latest \
+                    --scan /src \
+                    --format HTML \
+                    --out /report
+                '''
+            }
+            post {
+                always {
+                    publishHTML(target: [
+                        reportDir: 'owasp-report',
+                        reportFiles: 'dependency-check-report.html',
+                        reportName: 'OWASP Scan Report'
+                    ])
+                }
+            }
+        }
+        
         stage('Upload to Nexus') {
             steps {
                 script {
-                    // Read POM version
                     def pom = readMavenPom file: 'pom.xml'
-                    def artifactId = pom.artifactId
-                    def version = pom.version
-                    def groupId = pom.groupId
-                    def packaging = pom.packaging ?: 'jar'
+                    def repo = pom.version.endsWith('-SNAPSHOT') ? 'maven-snapshots' : 'maven-releases'
                     
-                    // Determine repository based on version (SNAPSHOT vs RELEASE)
-                    def nexusRepo = version.endsWith('-SNAPSHOT') ? 'maven-snapshots' : 'maven-releases'
-                    
-                    // Find the artifact
-                    def artifactPath = "target/${artifactId}-${version}.${packaging}"
-                    
-                    echo "Uploading ${artifactId}-${version}.${packaging} to ${nexusRepo}"
-                    
-                    
-                    // Upload to Nexus
                     nexusArtifactUploader(
-                        nexusVersion: NEXUS_VERSION,
-                        protocol: NEXUS_PROTOCOL,
+                        nexusVersion: 'nexus3',
+                        protocol: 'http',
                         nexusUrl: NEXUS_URL,
-                        groupId: groupId,
-                        version: version,
-                        repository: NEXUS_REPOSITORY,
+                        groupId: pom.groupId,
+                        version: pom.version,
+                        repository: repo,
                         credentialsId: NEXUS_CREDENTIAL_ID,
                         artifacts: [
                             [
-                                artifactId: artifactId,
-                                classifier: '',
-                                file: artifactPath,
-                                type: packaging
+                                artifactId: pom.artifactId,
+                                file: "target/${pom.artifactId}-${pom.version}.jar",
+                                type: 'jar'
                             ]
                         ]
                     )
@@ -94,15 +96,8 @@ pipeline {
     }
     
     post {
-        success {
-            echo 'Pipeline completed successfully!'
-        }
-        failure {
-            echo 'Pipeline failed. Check the logs for details.'
-        }
         always {
-            // Clean up OWASP reports directory (optional)
-            sh 'rm -rf owasp-reports || true'
+            sh 'rm -rf owasp-report || true'
         }
     }
 }
