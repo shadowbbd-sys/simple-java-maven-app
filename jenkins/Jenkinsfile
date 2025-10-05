@@ -28,5 +28,13 @@ pipeline {
                 sh './jenkins/scripts/deliver.sh' 
             }
         }
+
+         stage('Publish to Nexus') {
+            steps {
+                echo 'Uploading artifacts to Nexus repository...'
+                sh 'mvn deploy -DaltDeploymentRepository=nexus::default::http://52.90.103.249:8081/repository/maven-releases/'
+            }
+        }
+    }
     }
 }
