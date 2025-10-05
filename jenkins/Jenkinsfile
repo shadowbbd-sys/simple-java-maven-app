@@ -1,18 +1,39 @@
 pipeline {
     agent any
+    
     environment {
         JAVA_HOME = '/usr/lib/jvm/java-21-amazon-corretto'
         PATH = "/opt/maven/bin:$JAVA_HOME/bin:$PATH"
+        
+        // Nexus Configuration (Update these values)
+        NEXUS_VERSION = "nexus3"
+        NEXUS_PROTOCOL = "http"
+        NEXUS_URL = "http://52.90.103.249:8081"  // Your Nexus Docker container URL
+        NEXUS_REPOSITORY = "maven-releases"
+        NEXUS_CREDENTIAL_ID = "nexus-credentials"  // Jenkins credential ID
+        
+        // OWASP Docker Configuration
+        OWASP_DC_DOCKER_IMAGE = "owasp/dependency-check:latest"
     }
+    
     options {
         skipStagesAfterUnstable()
     }
+    
     stages {
+        stage('Checkout') {
+            steps {
+                git branch: 'master',
+                    url: 'https://github.com/skillupwithsachin/simple-java-maven-app.git'
+            }
+        }
+        
         stage('Build') {
             steps {
                 sh 'mvn -B -DskipTests clean package'
             }
         }
+        
         stage('Test') {
             steps {
                 sh 'mvn test'
@@ -23,25 +44,97 @@ pipeline {
                 }
             }
         }
+        
+        stage('OWASP Dependency Check') {
+            steps {
+                script {
+                    // Run OWASP Dependency Check using Docker
+                    sh """
+                        docker run --rm \
+                        -v \$(pwd):/src \
+                        -v \$(pwd)/owasp-reports:/report \
+                        ${OWASP_DC_DOCKER_IMAGE} \
+                        --scan /src \
+                        --format HTML \
+                        --format XML \
+                        --out /report \
+                        --project simple-java-maven-app
+                    """
+                }
+            }
+            post {
+                always {
+                    // Publish OWASP report
+                    publishHTML(target: [
+                        allowMissing: false,
+                        alwaysLinkToLastBuild: true,
+                        keepAll: true,
+                        reportDir: 'owasp-reports',
+                        reportFiles: 'dependency-check-report.html',
+                        reportName: 'OWASP Dependency Check Report'
+                    ])
+                }
+            }
+        }
+        
+        stage('Upload to Nexus') {
+            steps {
+                script {
+                    // Read POM version
+                    def pom = readMavenPom file: 'pom.xml'
+                    def artifactId = pom.artifactId
+                    def version = pom.version
+                    def groupId = pom.groupId
+                    def packaging = pom.packaging ?: 'jar'
+                    
+                    // Determine repository based on version (SNAPSHOT vs RELEASE)
+                    def nexusRepo = version.endsWith('-SNAPSHOT') ? 'maven-snapshots' : 'maven-releases'
+                    
+                    // Find the artifact
+                    def artifactPath = "target/${artifactId}-${version}.${packaging}"
+                    
+                    echo "Uploading ${artifactId}-${version}.${packaging} to ${nexusRepo}"
+                    
+                    
+                    // Upload to Nexus
+                    nexusArtifactUploader(
+                        nexusVersion: NEXUS_VERSION,
+                        protocol: NEXUS_PROTOCOL,
+                        nexusUrl: NEXUS_URL,
+                        groupId: groupId,
+                        version: version,
+                        repository: NEXUS_REPOSITORY,
+                        credentialsId: NEXUS_CREDENTIAL_ID,
+                        artifacts: [
+                            [
+                                artifactId: artifactId,
+                                classifier: '',
+                                file: artifactPath,
+                                type: packaging
+                            ]
+                        ]
+                    )
+                }
+            }
+        }
+        
         stage('Deliver') { 
             steps {
                 sh './jenkins/scripts/deliver.sh' 
             }
         }
-
-        stage('Publish to Nexus') {
-            steps {
-                echo '📦 Uploading artifacts to Nexus repository...'
-        withCredentials([usernamePassword(credentialsId: 'nexus-credentials', usernameVariable: 'NEXUS_USER', passwordVariable: 'NEXUS_PASS')]) {
-            sh '''
-                mvn deploy \
-                  -DaltDeploymentRepository=nexus::default::http://52.90.103.249:8081/repository/maven-releases/ \
-                  -Dnexus.username=$NEXUS_USER \
-                  -Dnexus.password=$NEXUS_PASS
-            '''
+    }
+    
+    post {
+        success {
+            echo 'Pipeline completed successfully!'
+        }
+        failure {
+            echo 'Pipeline failed. Check the logs for details.'
+        }
+        always {
+            // Clean up OWASP reports directory (optional)
+            sh 'rm -rf owasp-reports || true'
         }
     }
 }
-
-    }
-    }
