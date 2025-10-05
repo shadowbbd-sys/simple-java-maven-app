@@ -39,29 +39,6 @@ pipeline {
             }
         }
         
-        stage('OWASP Dependency Check') {
-            steps {
-                sh '''
-                    docker run --rm \
-                    -v $(pwd):/src \
-                    -v $(pwd)/owasp-report:/report \
-                    owasp/dependency-check:latest \
-                    --scan /src \
-                    --format HTML \
-                    --out /report
-                '''
-            }
-            post {
-                always {
-                    publishHTML(target: [
-                        reportDir: 'owasp-report',
-                        reportFiles: 'dependency-check-report.html',
-                        reportName: 'OWASP Scan Report'
-                    ])
-                }
-            }
-        }
-        
         stage('Upload to Nexus') {
             steps {
                 script {
